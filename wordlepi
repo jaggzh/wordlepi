@@ -19,6 +19,35 @@ correct_msgs=[
     "You guessed right!",
     "Error... No wait... That's correct!",
     "Correct! You've served your purpose.",
+    "Congratulations! You have successfully completed your quest.",
+    "The treasure is yours! Well done, adventurer.",
+    "You have defeated the evil and restored peace to the land.",
+    "The kingdom is saved, thanks to your bravery and skill.",
+    "You unravel the final mystery. The truth is revealed!",
+    "With the enemy vanquished, you emerge as the hero.",
+    "The portal closes, and you are hailed as a savior.",
+    "Your journey ends here, with glory and honor.",
+    "You find the lost artifact. Your mission is complete.",
+    "As the final puzzle is solved, you achieve victory.",
+]
+lose_msgs=[
+    "They lived happily ever after.",
+    "The cave collapses. You die.",
+    "Your journey ends here.",
+    "Alas, your adventure has come to a grim end.",
+    "Game Over. The darkness consumes you.",
+    "You have fallen. Better luck next time.",
+    "Thus, your tale comes to a tragic close.",
+    "Defeated, you meet your untimely demise.",
+    "In the end, you were not the hero you hoped to be.",
+    "Your legacy fades into obscurity.",
+    "The end of your story is written in shadows.",
+    "Fate was not kind. Your quest is over.",
+    "Lost to the ages, your journey concludes.",
+    "You have met with a terrible fate.",
+    "The world will remember you no more.",
+    "In defeat, your story ends.",
+    "Your final breath escapes you. The end.",
 ]
 
 opt_show_word=True
@@ -29,7 +58,7 @@ opt_debug=True
 opt_debug=False
 opt_help=True
 
-guessmax=6
+guessmax=5
 wlen=5
 guess_row=1 # Start of guesses area
 
@@ -91,9 +120,9 @@ def draw_keyboard(stdscr, guesses, cguessi, y):
     for row, key_row in enumerate(keys):
         for k in key_row:
             color = get_key_color(k, used_letters)
-            stdscr.attron(curses.color_pair(color))
+            stdscr.attrset(curses.color_pair(color))
             stdscr.addstr(y + row, key_row.index(k) * 4, f' {k} ')
-            stdscr.attroff(curses.color_pair(color))
+    stdscr.attrset(ccpattr(CLR_NORMAL))
     stdscr.addstr("\n")
 
 def get_used_letters(guesses, cguessi):
@@ -165,9 +194,11 @@ def init_colors():
     #if False and curses.COLORS == 256:
     if curses.COLORS == 256:
         cipattr_init(CLR_MATCH, 114, curses.COLOR_BLACK, attr=BOLD)
+        cipattr_init(CLR_EXISTS, 137, curses.COLOR_BLACK, attr=BOLD)
         cipattr_init(CLR_KB_UNUSED, 15, 240, attr=BOLD)
-        cipattr_init(CLR_KB_EXISTS, curses.COLOR_BLACK, 94)
+        cipattr_init(CLR_KB_EXISTS, curses.COLOR_BLACK, 215)
         cipattr_init(CLR_MSG_GENERAL, 229, 18)
+        cipattr_init(CLR_MSG_SUCCESS, 11, 23)
 
     global fbcolor
     fbcolor = ccp(CLR_NORMAL) | curses.A_BOLD
@@ -178,6 +209,7 @@ def draw_help(stdscr):
  ^W Toggle showing secret word
  ^D Toggle debug display
  ^N Toggle allowing of non-words
+ ^X Quit
 """)
 
 def main(main_stdscr):
@@ -248,7 +280,6 @@ def main(main_stdscr):
                 guesses[cguessi, len(cguess)-1] = ''
                 cguess.pop()
         elif ch == '\x18': # ^X
-            import ipdb; ipdb.set_trace(context=16); pass
             fbset("Quitting", color=ccpattr(CLR_MSG_BADWORD))
             end_it=.3
         elif ch == '\x17': # ^W
