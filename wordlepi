@@ -5,6 +5,7 @@ import os
 import numpy as np
 import sys
 import time
+import possible
 
 def e(rc=0): sys.exit(rc)
 
@@ -57,7 +58,7 @@ fb_row=guess_row+guessmax+2    # Feedback area
 kb_row=fb_row+2                # KB area
 afterkb_row=kb_row+3+1
 
-def load_words(dictfn):
+def load_words_dict(dictfn):
     with open(dictfn, 'r') as f:
         return [word.strip().upper() for word in f if len(word.strip()) == wlen and word.strip().isalpha()]
 
@@ -127,14 +128,14 @@ def fbset(str, color=None):
     fbcolor = ccpattr(CLR_MSG_GENERAL) if color is None else color
 
 def draw_fb(stdscr):
-    if fbstr == '': return
-    if opt_show_word:
-        str = f' {fbstr} (Secret word: {scrwrd}) '
-    else:
-        str = f' {fbstr} '
-    if fbcolor is not None: stdscr.attrset(fbcolor | curses.A_BOLD)
+    if fbstr == '' and not opt_show_word: return
+    strs=[]
+    if fbstr != '': strs.append(fbstr)
+    if opt_show_word: strs.append(f'(Secret word: {scrwrd})')
+    str = ' ' + ' '.join(strs) + ' '
+    if fbcolor is not None: stdscr.attrset(fbcolor)
     stdscr.addstr(fb_row, 0, str)
-    if fbcolor is not None: stdscr.attrset(curses.color_pair(CLR_NORMAL))
+    if fbcolor is not None: stdscr.attrset(ccpattr(CLR_NORMAL))
 
 def cip(*x): curses.init_pair(*x)
 def ccp(clr): return curses.color_pair(clr)
@@ -152,7 +153,7 @@ def init_colors():
     cipattr_init(CLR_EXISTS, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     cipattr_init(CLR_NORMAL, curses.COLOR_WHITE, curses.COLOR_BLACK, attr=BOLD) # Used for non-match letters too
 
-    cipattr_init(CLR_MSG_GENERAL, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    cipattr_init(CLR_MSG_GENERAL, curses.COLOR_CYAN, curses.COLOR_BLACK, attr=BOLD)
     cipattr_init(CLR_MSG_SUCCESS, curses.COLOR_BLACK, curses.COLOR_GREEN)
     cipattr_init(CLR_MSG_BADWORD, curses.COLOR_RED, curses.COLOR_BLACK, attr=BOLD)
 
@@ -165,8 +166,8 @@ def init_colors():
     if curses.COLORS == 256:
         cipattr_init(CLR_MATCH, 114, curses.COLOR_BLACK, attr=BOLD)
         cipattr_init(CLR_KB_UNUSED, 15, 240, attr=BOLD)
-        cipattr_init(CLR_MSG_GENERAL, 229, 18, attr=BOLD)
         cipattr_init(CLR_KB_EXISTS, curses.COLOR_BLACK, 94)
+        cipattr_init(CLR_MSG_GENERAL, 229, 18)
 
     global fbcolor
     fbcolor = ccp(CLR_NORMAL) | curses.A_BOLD
@@ -187,7 +188,8 @@ def main(main_stdscr):
     stdscr.clear()
     init_colors()
 
-    words = load_words('/usr/share/dict/words')
+    # words = load_words_dict('/usr/share/dict/words')
+    words = [s.upper() for s in possible.answers]
     scrwrd = secret_word = random.choice(words)
 
     guesses = np.full((guessmax,wlen), '', dtype='<U1')
@@ -204,13 +206,13 @@ def main(main_stdscr):
         draw_fb(stdscr)
         draw_keyboard(stdscr, guesses, cguessi, kb_row)
 
-        # stdscr.refresh()
 
+        if opt_debug:
+            stdscr.addstr(afterkb_row, 0, str(guesses) + "\n")
         if opt_help:
             draw_help(stdscr)
-        if opt_debug:
-            stdscr.addstr(afterkb_row, 0, str(guesses))
         # print(guesses)
+        stdscr.refresh()
         if end_it > 0:
             time.sleep(.1)
             end_it -= .05
@@ -241,9 +243,14 @@ def main(main_stdscr):
             else:  # Current guess is not a valid word
                 fbset("Word not in wordlist",
                       color=ccpattr(CLR_MSG_BADWORD))
-        elif ch == 'KEY_BACKSPACE' and cguess:
-            guesses[cguessi, len(cguess)-1] = ''
-            cguess.pop()
+        elif ch == 'KEY_BACKSPACE':
+            if cguess:
+                guesses[cguessi, len(cguess)-1] = ''
+                cguess.pop()
+        elif ch == '\x18': # ^X
+            import ipdb; ipdb.set_trace(context=16); pass
+            fbset("Quitting", color=ccpattr(CLR_MSG_BADWORD))
+            end_it=.3
         elif ch == '\x17': # ^W
             opt_show_word=not opt_show_word
         elif ch == '\x0e': # ^N
