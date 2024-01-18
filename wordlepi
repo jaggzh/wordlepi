@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+import curses
+import random
+import os
+import numpy as np
+import sys
+import time
+
+def e(rc=0): sys.exit(rc)
+
+correct_msgs=[
+    "Correct. You make me proud.",
+    "Correct! Back to work!",
+    "Correct. You made your parents proud, even if they didn't always express it well.",
+    "You win.",
+    "You win. (I won back in the day when I was your age too).",
+    "You win. :)",
+    "You guessed right!",
+    "Error... No wait... That's correct!",
+    "Correct! You've served your purpose.",
+]
+
+opt_show_word=True
+opt_show_word=False
+opt_allow_nonword=False
+opt_allow_nonword=True
+opt_debug=True
+opt_debug=False
+opt_help=True
+
+guessmax=6
+wlen=5
+guess_row=1 # Start of guesses area
+
+stdscr=None
+secwrd=''
+
+i=1
+CLR_NORMAL=i; i+=1
+CLR_MATCH=i; i+=1
+CLR_EXISTS=i; i+=1
+CLR_MSG_GENERAL=i; i+=1
+CLR_MSG_SUCCESS=i; i+=1
+CLR_MSG_BADWORD=i; i+=1
+CLR_KB_UNUSED=i; i+=1
+CLR_KB_MATCH=i; i+=1
+CLR_KB_EXISTS=i; i+=1
+CLR_KB_NORMAL=i; i+=1
+CLR_KB_USED=i; i+=1
+clr_pair_attrs=[0]*i
+
+BOLD=curses.A_BOLD
+
+fbstr=''
+
+fb_row=guess_row+guessmax+2    # Feedback area
+kb_row=fb_row+2                # KB area
+afterkb_row=kb_row+3+1
+
+def load_words(dictfn):
+    with open(dictfn, 'r') as f:
+        return [word.strip().upper() for word in f if len(word.strip()) == wlen and word.strip().isalpha()]
+
+def color_for_letter(letter, secret_word, guess, letter_index):
+    if letter == '':
+        return CLR_NORMAL
+    if letter == secret_word[letter_index]:  # Correct letter in the correct place
+        return CLR_MATCH
+    elif letter in secret_word:  # Letter is in the word, but not in the right place
+        return CLR_EXISTS
+    else:
+        return CLR_NORMAL
+
+def draw_grid(stdscr, guesses, secret_word, cguess, cguessi):
+    for rowi in range(guesses.shape[0]):
+        for chari in range(guesses.shape[1]):
+            c = '_' if not len(guesses[rowi, chari]) else guesses[rowi, chari]
+            cs = f'_{c}_'
+            if rowi < cguessi:
+                color = color_for_letter(c, secret_word, ''.join(guesses[rowi]), chari) if c != '_' else CLR_NORMAL
+            else:
+                color = CLR_NORMAL
+            stdscr.attrset(ccpattr(color))
+            stdscr.addstr(guess_row + rowi, chari*(len(cs)+1), cs)
+            stdscr.attrset(ccpattr(CLR_NORMAL))
+
+def draw_keyboard(stdscr, guesses, cguessi, y):
+    keys = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
+    used_letters = get_used_letters(guesses, cguessi)
+    for row, key_row in enumerate(keys):
+        for k in key_row:
+            color = get_key_color(k, used_letters)
+            stdscr.attron(curses.color_pair(color))
+            stdscr.addstr(y + row, key_row.index(k) * 4, f' {k} ')
+            stdscr.attroff(curses.color_pair(color))
+    stdscr.addstr("\n")
+
+def get_used_letters(guesses, cguessi):
+    used_letters = {'match': set(), 'exists': set(), 'used': set()}
+    for i in range(cguessi):
+        for j, letter in enumerate(guesses[i]):
+            if letter:
+                if letter == scrwrd[j]:
+                    used_letters['match'].add(letter)
+                elif letter in scrwrd:
+                    used_letters['exists'].add(letter)
+                else:
+                    used_letters['used'].add(letter)
+    return used_letters
+
+def get_key_color(key, used_letters):
+    if key in used_letters['match']:
+        return CLR_KB_MATCH
+    elif key in used_letters['exists']:
+        return CLR_KB_EXISTS
+    elif key in used_letters['used']:
+        return CLR_KB_USED
+    else:
+        return CLR_KB_UNUSED
+
+def commit_guess(*, stdscr, cguess, words, secret_word):
+    stdscr.addstr(fb_row, 0, 'Committed')
+
+def fbset(str, color=None):
+    global fbstr, fbcolor
+    fbstr = str
+    fbcolor = ccpattr(CLR_MSG_GENERAL) if color is None else color
+
+def draw_fb(stdscr):
+    if fbstr == '': return
+    if opt_show_word:
+        str = f' {fbstr} (Secret word: {scrwrd}) '
+    else:
+        str = f' {fbstr} '
+    if fbcolor is not None: stdscr.attrset(fbcolor | curses.A_BOLD)
+    stdscr.addstr(fb_row, 0, str)
+    if fbcolor is not None: stdscr.attrset(curses.color_pair(CLR_NORMAL))
+
+def cip(*x): curses.init_pair(*x)
+def ccp(clr): return curses.color_pair(clr)
+def ccpattr(clr):
+    return curses.color_pair(clr) | \
+            clr_pair_attrs[clr]
+
+def cipattr_init(cidx, fg, bg, attr=0):
+    curses.init_pair(cidx, fg, bg)
+    clr_pair_attrs[cidx] = attr
+
+def init_colors():
+    curses.start_color()
+    cipattr_init(CLR_MATCH, curses.COLOR_GREEN, curses.COLOR_BLACK, attr=BOLD)
+    cipattr_init(CLR_EXISTS, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    cipattr_init(CLR_NORMAL, curses.COLOR_WHITE, curses.COLOR_BLACK, attr=BOLD) # Used for non-match letters too
+
+    cipattr_init(CLR_MSG_GENERAL, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    cipattr_init(CLR_MSG_SUCCESS, curses.COLOR_BLACK, curses.COLOR_GREEN)
+    cipattr_init(CLR_MSG_BADWORD, curses.COLOR_RED, curses.COLOR_BLACK, attr=BOLD)
+
+    cipattr_init(CLR_KB_UNUSED, curses.COLOR_BLACK, curses.COLOR_WHITE) # Hasn't been tried yet
+    cipattr_init(CLR_KB_MATCH, curses.COLOR_BLACK, curses.COLOR_GREEN)
+    cipattr_init(CLR_KB_EXISTS, curses.COLOR_BLACK, curses.COLOR_YELLOW)
+    cipattr_init(CLR_KB_USED, curses.COLOR_WHITE, curses.COLOR_BLACK) # Tried but no match
+    # Override some colors to be perdier in 256 mode...
+    #if False and curses.COLORS == 256:
+    if curses.COLORS == 256:
+        cipattr_init(CLR_MATCH, 114, curses.COLOR_BLACK, attr=BOLD)
+        cipattr_init(CLR_KB_UNUSED, 15, 240, attr=BOLD)
+        cipattr_init(CLR_MSG_GENERAL, 229, 18, attr=BOLD)
+        cipattr_init(CLR_KB_EXISTS, curses.COLOR_BLACK, 94)
+
+    global fbcolor
+    fbcolor = ccp(CLR_NORMAL) | curses.A_BOLD
+
+def draw_help(stdscr):
+    stdscr.addstr("""
+ ^H Toggle help
+ ^W Toggle showing secret word
+ ^D Toggle debug display
+ ^N Toggle allowing of non-words
+""")
+
+def main(main_stdscr):
+    global stdscr, scrwrd
+    global opt_show_word, opt_allow_nonword, opt_help, opt_debug
+    stdscr = main_stdscr
+    curses.curs_set(0)  # Hide cursor
+    stdscr.clear()
+    init_colors()
+
+    words = load_words('/usr/share/dict/words')
+    scrwrd = secret_word = random.choice(words)
+
+    guesses = np.full((guessmax,wlen), '', dtype='<U1')
+    cguessi = 0     # cur guess row
+    cguess = []     # cur guess letters
+    fbset('')
+    if opt_debug or opt_show_word:
+        fbset('Feedback area')
+    end_it = 0
+
+    while True:
+        stdscr.clear()
+        draw_grid(stdscr, guesses, scrwrd, cguess, cguessi)
+        draw_fb(stdscr)
+        draw_keyboard(stdscr, guesses, cguessi, kb_row)
+
+        # stdscr.refresh()
+
+        if opt_help:
+            draw_help(stdscr)
+        if opt_debug:
+            stdscr.addstr(afterkb_row, 0, str(guesses))
+        # print(guesses)
+        if end_it > 0:
+            time.sleep(.1)
+            end_it -= .05
+            if end_it < 0:
+                break
+            continue
+
+        ch = stdscr.getkey()
+        if ch.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' and len(cguess) < 5:
+            cguess.append(ch.upper())
+            guesses[cguessi, len(cguess)-1] = ch.upper()
+        elif ch == '\n':
+            current_word = ''.join(cguess)
+            if opt_allow_nonword or current_word in words:  # Check if the current guess is a valid word
+                #fbset(f'Guessi: {cguessi}')
+                commit_guess(stdscr=stdscr, cguess=cguess, words=words, secret_word=secret_word)
+                if current_word == secret_word:
+                    fbset(' ' + random.choice(correct_msgs) + ' ',
+                          color=ccp(CLR_MSG_SUCCESS))
+                    end_it = .3
+                elif cguessi + 1 >= guessmax:
+                    fbset('The cave collapses. You die.')
+                    end_it = .3
+                else:
+                    cguessi += 1
+                    cguess = []
+                    fbset(f'Attempt {cguessi + 1} of {guessmax}')
+            else:  # Current guess is not a valid word
+                fbset("Word not in wordlist",
+                      color=ccpattr(CLR_MSG_BADWORD))
+        elif ch == 'KEY_BACKSPACE' and cguess:
+            guesses[cguessi, len(cguess)-1] = ''
+            cguess.pop()
+        elif ch == '\x17': # ^W
+            opt_show_word=not opt_show_word
+        elif ch == '\x0e': # ^N
+            opt_allow_nonword=not opt_allow_nonword
+            fbset(f"Non-words is now {opt_allow_nonword}")
+        elif ch == '\x04': # ^D
+            opt_debug=not opt_debug
+        elif ch == '\x08': # ^H
+            opt_help=not opt_help
+        elif ch == 'KEY_RESIZE':
+            pass
+        else:
+            # os.system('stty sane'); import ipdb; ipdb.set_trace(context=16); pass
+            hex_sequence = str_escaped(ch)
+            fbset(f"Unknown input key/sequence: '{hex_sequence}'")
+
+def str_escaped(s):
+    return ''.join(f'\\x{ord(c):02x}' if not c.isprintable() else c for c in s)
+
+
+curses.wrapper(main)
