@@ -5,6 +5,7 @@ Welcome to WorldlePi, a Wordle clone that runs directly in your text terminal, w
 Enjoy the classic word-guessing game with the convenience and simplicity of pre-web technology!  (Except maybe the 256 color support.. and python.. and github.  Nevermind, but it *could* be pre-web.)
 
 ![WorldlePi Screenshot](i/ss.png)
+![WorldlePi Screenshot](i/ss2.png)
 
 ## Features
 
