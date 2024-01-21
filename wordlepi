@@ -52,8 +52,8 @@ lose_msgs=[
 
 opt_show_word=True
 opt_show_word=False
-opt_allow_nonword=False
 opt_allow_nonword=True
+opt_allow_nonword=False
 opt_debug=True
 opt_debug=False
 opt_help=True
