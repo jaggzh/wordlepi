@@ -204,13 +204,17 @@ def init_colors():
     fbcolor = ccp(CLR_NORMAL) | curses.A_BOLD
 
 def draw_help(stdscr):
-    stdscr.addstr("""
+    try:
+        stdscr.addstr("""
  ^H Toggle help
  ^W Toggle showing secret word
  ^D Toggle debug display
  ^N Toggle allowing of non-words
  ^X Quit
 """)
+    except:
+        # fbset('No screenspace for full help')
+        pass
 
 def main(main_stdscr):
     global stdscr, scrwrd
@@ -240,7 +244,11 @@ def main(main_stdscr):
 
 
         if opt_debug:
-            stdscr.addstr(afterkb_row, 0, str(guesses) + "\n")
+            try:
+                stdscr.addstr(afterkb_row, 0, str(guesses) + "\n")
+            except:
+                # fbset('No screenspace for full debug display')
+                pass
         if opt_help:
             draw_help(stdscr)
         # print(guesses)
