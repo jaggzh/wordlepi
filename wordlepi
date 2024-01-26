@@ -6,9 +6,69 @@ import numpy as np
 import sys
 import time
 import possible
+import os; import sys; import inspect;
+import argparse
 
 def e(rc=0): sys.exit(rc)
+def get_script_final_dir():
+	if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
+		path = os.path.abspath(sys.executable)
+	else: path = inspect.getabsfile(get_script_final_dir)
+	path = os.path.realpath(path)
+	return os.path.dirname(path)
+our_dir = get_script_final_dir()
 
+wordsets_files=[
+        "wordsets/wordfrequency.info/wordFrequency.txt",
+]
+
+opt_show_word=True
+opt_show_word=False
+opt_allow_nonword=True
+opt_allow_nonword=False
+opt_debug=True
+opt_debug=False
+opt_help=True
+opt_wordset=None
+opt_wordset=0
+
+guessmax=5
+wlen=5
+guess_row=1 # Start of guesses area
+
+stdscr=None
+secwrd=''
+ww_possible=None
+ww_=None
+
+i=1
+CLR_NORMAL=i; i+=1
+CLR_MATCH=i; i+=1
+CLR_EXISTS=i; i+=1
+CLR_MSG_GENERAL=i; i+=1
+CLR_MSG_SUCCESS=i; i+=1
+CLR_MSG_BADWORD=i; i+=1
+CLR_KB_UNUSED=i; i+=1
+CLR_KB_MATCH=i; i+=1
+CLR_KB_EXISTS=i; i+=1
+CLR_KB_NORMAL=i; i+=1
+CLR_KB_USED=i; i+=1
+clr_pair_attrs=[0]*i
+
+BOLD=curses.A_BOLD
+
+fbstr=''
+
+fb_row=guess_row+guessmax+2    # Feedback area
+kb_row=fb_row+2                # KB area
+afterkb_row=kb_row+3+1
+
+long_guess_msgs=[
+    "Can't type more.",
+    "Try hitting backspace to erase.",
+    "Your text is too big to fit in my word space.",
+    f"The maximum size of your text is {wlen} freedom units.",
+]
 correct_msgs=[
     "Correct. You make me proud.",
     "Correct! Back to work!",
@@ -49,43 +109,6 @@ lose_msgs=[
     "In defeat, your story ends.",
     "Your final breath escapes you. The end.",
 ]
-
-opt_show_word=True
-opt_show_word=False
-opt_allow_nonword=True
-opt_allow_nonword=False
-opt_debug=True
-opt_debug=False
-opt_help=True
-
-guessmax=5
-wlen=5
-guess_row=1 # Start of guesses area
-
-stdscr=None
-secwrd=''
-
-i=1
-CLR_NORMAL=i; i+=1
-CLR_MATCH=i; i+=1
-CLR_EXISTS=i; i+=1
-CLR_MSG_GENERAL=i; i+=1
-CLR_MSG_SUCCESS=i; i+=1
-CLR_MSG_BADWORD=i; i+=1
-CLR_KB_UNUSED=i; i+=1
-CLR_KB_MATCH=i; i+=1
-CLR_KB_EXISTS=i; i+=1
-CLR_KB_NORMAL=i; i+=1
-CLR_KB_USED=i; i+=1
-clr_pair_attrs=[0]*i
-
-BOLD=curses.A_BOLD
-
-fbstr=''
-
-fb_row=guess_row+guessmax+2    # Feedback area
-kb_row=fb_row+2                # KB area
-afterkb_row=kb_row+3+1
 
 def load_words_dict(dictfn):
     with open(dictfn, 'r') as f:
@@ -225,7 +248,13 @@ def main(main_stdscr):
     init_colors()
 
     # words = load_words_dict('/usr/share/dict/words')
-    words = [s.upper() for s in possible.answers]
+    if opt_wordset is not None:
+        words = [s.upper() \
+                 for s in load_words_dict(
+                    os.path.join(our_dir,
+                                 wordsets_files[opt_wordset]))]
+    else:
+        words = [s.upper() for s in possible.answers]
     scrwrd = secret_word = random.choice(words)
 
     guesses = np.full((guessmax,wlen), '', dtype='<U1')
@@ -261,9 +290,13 @@ def main(main_stdscr):
             continue
 
         ch = stdscr.getkey()
-        if ch.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' and len(cguess) < 5:
-            cguess.append(ch.upper())
-            guesses[cguessi, len(cguess)-1] = ch.upper()
+        if ch.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+            if len(cguess) >= wlen:
+                fbset(random.choice(long_guess_msgs),
+                      color=ccp(CLR_MSG_GENERAL))
+            else:
+                cguess.append(ch.upper())
+                guesses[cguessi, len(cguess)-1] = ch.upper()
         elif ch == '\n':
             current_word = ''.join(cguess)
             if opt_allow_nonword or current_word in words:  # Check if the current guess is a valid word
@@ -309,5 +342,24 @@ def main(main_stdscr):
 def str_escaped(s):
     return ''.join(f'\\x{ord(c):02x}' if not c.isprintable() else c for c in s)
 
+def get_args():
+    parser = argparse.ArgumentParser(
+        prog='wordlepi',
+        description='A minimalist--sort of, text-based--definitely, Wordle clone',
+        epilog=None)
+    parser.add_argument("-w", type=int, help="Word Length",
+                        default=5)
+    parser.add_argument("-g", type=int, help="Guesses (default is int(word_length*1.2, so: 5=>5, 6=>7)")
+    args = parser.parse_args()
+    global guessmax, wlen
+    global fb_row, kb_row, afterkb_row
+    wlen=args.w
+    guessmax=int(wlen*1.2)
+    fb_row=guess_row+guessmax+2    # Feedback area
+    kb_row=fb_row+2                # KB area
+    afterkb_row=kb_row+3+1
 
+    return args
+
+args = get_args()
 curses.wrapper(main)
